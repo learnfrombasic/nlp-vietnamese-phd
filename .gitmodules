@@ -1,0 +1,6 @@
+[submodule "vendor/bert_base_vn_deploy"]
+	path = vendor/bert_base_vn_deploy
+	url = https://github.com/vuongquocphong/bert_base_vn_deploy.git
+[submodule "vendor/underthesea"]
+	path = vendor/underthesea
+	url = https://github.com/undertheseanlp/underthesea.git
