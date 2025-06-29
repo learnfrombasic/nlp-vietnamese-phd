@@ -3,8 +3,10 @@ from typing import Callable
 from huggingface_hub import InferenceClient
 from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
 
+from src.ner.base import NERBase
 
-class NERInference:
+
+class NERHugginFace(NERBase):
     def __init__(
         self,
         api_key: str = None,
