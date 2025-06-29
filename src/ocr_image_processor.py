@@ -64,29 +64,50 @@ def extract_images_from_pdf(pdf_path, output_dir="extracted_images"):
     doc = pymupdf.open(pdf_path)
     image_list = []
     
+    print(f"🔄 Extracting and saving images from PDF...")
+    
     for page_num in range(len(doc)):
         page = doc[page_num]
         image_dict = page.get_images()
         
+        print(f"📄 Page {page_num+1}: Found {len(image_dict)} images")
+        
         for img_index, img in enumerate(image_dict):
-            xref = img[0]
-            pix = pymupdf.Pixmap(doc, xref)
-            
-            if pix.n - pix.alpha < 4:  # GRAY or RGB
-                img_filename = f"333_BLOCK{page_num+1:03d}_LINE{img_index+1:03d}.png"
-                img_path = os.path.join(output_dir, img_filename)
-                pix.save(img_path)
+            try:
+                xref = img[0]
+                pix = pymupdf.Pixmap(doc, xref)
                 
-                image_list.append({
-                    'page': page_num + 1,
-                    'filename': img_filename,
-                    'path': img_path,
-                    'index': img_index + 1
-                })
-            
-            pix = None
+                if pix.n - pix.alpha < 4:  # GRAY or RGB
+                    img_filename = f"333_BLOCK{page_num+1:03d}_LINE{img_index+1:03d}.png"
+                    img_path = os.path.join(output_dir, img_filename)
+                    
+                    # Save the image
+                    pix.save(img_path)
+                    
+                    # Verify the image was saved
+                    if os.path.exists(img_path):
+                        file_size = os.path.getsize(img_path)
+                        print(f"💾 Saved: {img_filename} ({pix.width}x{pix.height}, {file_size} bytes)")
+                        
+                        image_list.append({
+                            'page': page_num + 1,
+                            'filename': img_filename,
+                            'path': img_path,
+                            'index': img_index + 1,
+                            'size': f"{pix.width}x{pix.height}",
+                            'file_size': file_size
+                        })
+                    else:
+                        print(f"❌ Failed to save: {img_filename}")
+                
+                pix = None
+                
+            except Exception as e:
+                print(f"⚠️ Error processing image {img_index+1} on page {page_num+1}: {e}")
     
     doc.close()
+    
+    print(f"✅ Total images saved: {len(image_list)} in '{output_dir}' folder")
     return image_list
 
 def ocr_image(image_path, lang='vie'):
@@ -169,62 +190,102 @@ def process_images_with_ocr(pdf_path, output_file="ocr_results.txt", start_line=
     
     return results
 
-def process_pdf_pages_ocr(pdf_path, output_file="page_ocr_results.txt", start_line=13013):
-    """Process entire PDF pages with OCR (alternative approach)."""
+def process_pdf_pages_ocr(pdf_path, output_file="page_ocr_results.txt", start_line=13013, save_images=True, image_dir="page_images"):
+    """Process entire PDF pages with OCR and optionally save page images."""
     print(f"🔄 Processing PDF pages with OCR: {pdf_path}")
+    
+    # Create image directory if saving images
+    if save_images:
+        os.makedirs(image_dir, exist_ok=True)
+        print(f"📁 Images will be saved to: {image_dir}")
     
     doc = pymupdf.open(pdf_path)
     results = []
     line_number = start_line
-    file = open(output_file, 'w', encoding='utf-8')
-    for page_num in range(len(doc)):
-        page = doc[page_num]
-        
-        # Convert page to image
-        mat = pymupdf.Matrix(2.0, 2.0)  # Increase resolution
-        pix = page.get_pixmap(matrix=mat)
-        img_path = f"temp_page_{page_num+1}.png"
-        pix.save(img_path)
-        
-        print(f"🔍 Processing OCR for page {page_num+1}")
-        ocr_text = ocr_image(img_path)
-        
-        if ocr_text:
-            sentences = split_sentences(ocr_text)
+    
+    with open(output_file, 'w', encoding='utf-8') as file:
+        for page_num in range(len(doc)):
+            page = doc[page_num]
             
-            for sentence in sentences:
-                if len(sentence.strip()) > 5:
-                    filename = f"333_BLOCK{page_num+1:03d}_LINE{len(results)+1:03d}.png"
-                    result_line = f'"{filename}": "{sentence}",'
-                    file.write(f"{line_number}\t{result_line}\n")
-                    results.append((line_number, result_line))
-                    line_number += 1
-        
-        # Clean up temp file
-        if os.path.exists(img_path):
-            os.remove(img_path)
-        
-        pix = None
+            # Convert page to image with higher resolution
+            mat = pymupdf.Matrix(3.0, 3.0)  # Increase resolution for better OCR
+            pix = page.get_pixmap(matrix=mat)
+            
+            # Save page image permanently if requested
+            if save_images:
+                img_filename = f"page_{page_num+1:03d}.png"
+                img_path = os.path.join(image_dir, img_filename)
+                pix.save(img_path)
+                
+                if os.path.exists(img_path):
+                    file_size = os.path.getsize(img_path)
+                    print(f"💾 Saved page image: {img_filename} ({pix.width}x{pix.height}, {file_size} bytes)")
+                else:
+                    print(f"❌ Failed to save page image: {img_filename}")
+            
+            # Create temporary image for OCR
+            temp_img_path = f"temp_page_{page_num+1}.png"
+            pix.save(temp_img_path)
+            
+            print(f"🔍 Processing OCR for page {page_num+1}")
+            ocr_text = ocr_image(temp_img_path)
+            
+            if ocr_text:
+                sentences = split_sentences(ocr_text)
+                
+                for sentence in sentences:
+                    if len(sentence.strip()) > 5:
+                        filename = f"333_BLOCK{page_num+1:03d}_LINE{len(results)+1:03d}.png"
+                        result_line = f'"{filename}": "{sentence}",'
+                        file.write(f"{line_number}\t{result_line}\n")
+                        results.append((line_number, result_line))
+                        line_number += 1
+            
+            # Clean up temp file
+            if os.path.exists(temp_img_path):
+                os.remove(temp_img_path)
+            
+            pix = None
     
     doc.close()
     
-    # Write results to file
-    # with open(output_file, 'w', encoding='utf-8') as f:
-    #     for line_num, content in results:
-    #         f.write(f"{line_num}\t{content}\n")
-    
     print(f"✅ OCR results saved to: {output_file}")
     print(f"📊 Total processed lines: {len(results)}")
+    if save_images:
+        print(f"🖼️ Page images saved to: {image_dir}")
     
     return results
 
 # Example usage:
 if __name__ == "__main__":
-    # Method 1: Extract embedded images and OCR them
-    # results = process_images_with_ocr("your_pdf_file.pdf", "image_ocr_output.txt")
+    pdf_file = "temp/TRANG TỬ NAM HOA KINH.pdf"
     
-    # Method 2: Convert each page to image and OCR (recommended for scanned PDFs)
-    results = process_pdf_pages_ocr("/home/octoopt/workspace/projects/learn-from-basics/nlp-vietnamese-phd/temp/TRANG TỬ NAM HOA KINH.pdf", "page_ocr_output.txt")
+    print("=" * 60)
+    print("METHOD 1: Extract embedded images and OCR them")
+    print("=" * 60)
+    # Extract embedded images first (they will be saved automatically)
+    images = extract_images_from_pdf(pdf_file, "extracted_images")
     
+    if images:
+        print(f"\n🔍 Processing OCR for {len(images)} extracted images...")
+        results1 = process_images_with_ocr(pdf_file, "embedded_ocr_results.txt")
+    else:
+        print("No embedded images found.")
+        results1 = []
     
-    print(results)
+    print("\n" + "=" * 60)
+    print("METHOD 2: Convert pages to images and OCR (with saved images)")
+    print("=" * 60)
+    # Convert pages to images and process with OCR (images will be saved)
+    results2 = process_pdf_pages_ocr(
+        pdf_file, 
+        "page_ocr_results.txt",
+        save_images=True,  # This will save page images
+        image_dir="saved_page_images"  # Custom directory for page images
+    )
+    
+    print(f"\n🎯 SUMMARY:")
+    print(f"   📄 Embedded images processed: {len(results1)}")
+    print(f"   📄 Page OCR lines processed: {len(results2)}")
+    print(f"   📁 Check folders: 'extracted_images' and 'saved_page_images'")
+    print(f"   📝 Check files: 'embedded_ocr_results.txt' and 'page_ocr_results.txt'")

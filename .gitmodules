@@ -4,3 +4,6 @@
 [submodule "vendor/underthesea"]
 	path = vendor/underthesea
 	url = https://github.com/undertheseanlp/underthesea.git
+[submodule "vendor/vietocr"]
+	path = vendor/vietocr
+	url = https://github.com/pbcquoc/vietocr.git
